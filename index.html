@@ -316,10 +316,18 @@
   var WEEK_ORDER = ['월','화','수','목','금','토','일']; // index 0=Mon ... 6=Sun
   function monIndexFromDate(d){ return (d.getDay()+6)%7; } // JS getDay: 0=Sun
 
+  // local-timezone-safe date key (avoids the UTC shift bug from toISOString)
+  function fmtDate(d){
+    var y = d.getFullYear();
+    var m = ('0'+(d.getMonth()+1)).slice(-2);
+    var dd = ('0'+d.getDate()).slice(-2);
+    return y+'-'+m+'-'+dd;
+  }
+
   // ---------- test mode: simulate date offset ----------
   var testOffsetDays = load('fitcoach_test_offset') || 0;
   function getNow(){ var d = new Date(); d.setDate(d.getDate() + testOffsetDays); return d; }
-  function getTodayKey(){ return getNow().toISOString().slice(0,10); }
+  function getTodayKey(){ return fmtDate(getNow()); }
 
   var state = load('fitcoach_state') || {
     name:null, goal:null, freq:null,
@@ -809,7 +817,7 @@
     while(true){
       var monIdx = monIndexFromDate(d);
       var splitName = state.schedule[monIdx];
-      var key = d.toISOString().slice(0,10);
+      var key = fmtDate(d);
       if(!splitName){ d.setDate(d.getDate()-1); continue; } // rest days don't break streak, just skip
       var rec = state.history[key];
       if(rec && rec.sets){
@@ -836,7 +844,7 @@
     for(var i=6;i>=0;i--){
       var d = getNow();
       d.setDate(d.getDate()-i);
-      var key = d.toISOString().slice(0,10);
+      var key = fmtDate(d);
       var monIdx = monIndexFromDate(d);
       var hasSplit = !!state.schedule[monIdx];
       var rec = state.history[key];
@@ -873,7 +881,7 @@
   var calCursor = null; // first-of-month Date for the month currently shown
   var calSelectedKey = null;
 
-  function dateKey(d){ return d.toISOString().slice(0,10); }
+  function dateKey(d){ return fmtDate(d); }
 
   function renderCalendar(){
     if(!calCursor) calCursor = new Date(getNow().getFullYear(), getNow().getMonth(), 1);
