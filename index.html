@@ -2,8 +2,14 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>FITCOACH — AI 퍼스널 트레이너</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#11141a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FITCOACH">
+<link rel="apple-touch-icon" href="icon.png">
 <style>
   :root{
     --bg: #11141a;
@@ -122,6 +128,39 @@
   .rest-msg{font-size:13.5px; color:var(--ink-dim); padding:10px 0;}
 
   .hidden{display:none !important;}
+
+  /* CALENDAR */
+  .cal-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .cal-month{ font-size:15px; font-weight:800; }
+  .cal-legend{ display:flex; gap:14px; font-size:11.5px; color:var(--ink-dim); margin-bottom:12px; flex-wrap:wrap; }
+  .cal-legend .dot{ display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:5px; vertical-align:middle; }
+  .dot.done{background:var(--teal);}
+  .dot.missed{background:var(--signal);}
+  .dot.rest{background:#3a4254;}
+  .cal-weekdays{ display:grid; grid-template-columns:repeat(7,1fr); text-align:center; font-size:11px; color:var(--ink-dim); margin-bottom:6px; }
+  .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:5px; }
+  .cal-cell{
+    aspect-ratio:1; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    font-size:12.5px; cursor:pointer; position:relative; color:var(--ink-dim);
+    background:var(--bg-soft); border:1px solid var(--line); transition:.12s;
+  }
+  .cal-cell.empty{ background:transparent; border-color:transparent; cursor:default; }
+  .cal-cell.rest{ color:#5b6273; }
+  .cal-cell.done{ background:rgba(51,214,182,.16); border-color:var(--teal); color:var(--ink); font-weight:700; }
+  .cal-cell.missed{ background:rgba(255,90,45,.14); border-color:var(--signal); color:var(--ink); font-weight:700; }
+  .cal-cell.future{ opacity:.55; cursor:pointer; }
+  .cal-cell.today{ outline:2px solid var(--gold); outline-offset:1px; }
+  .cal-cell.selected{ box-shadow:0 0 0 2px var(--ink) inset; }
+  .cal-detail{
+    margin-top:16px; padding:14px 16px; border-radius:10px; background:var(--bg-soft); border:1px solid var(--line);
+  }
+  .cal-detail h3{ font-size:13.5px; font-weight:800; margin-bottom:8px; }
+  .cal-detail .meta{ font-size:12px; color:var(--ink-dim); margin-bottom:10px; }
+  .cal-detail .ex-row{ display:flex; justify-content:space-between; font-size:13px; padding:6px 0; border-bottom:1px solid var(--line); }
+  .cal-detail .ex-row:last-child{ border-bottom:none; }
+  .cal-detail .ex-row .nm{ font-weight:600; }
+  .cal-detail .ex-row .vv{ color:var(--teal); }
+  .cal-detail .empty-note{ font-size:12.5px; color:var(--ink-dim); }
   @media (prefers-reduced-motion: reduce){ *{transition:none !important;} }
 </style>
 </head>
@@ -232,6 +271,25 @@
       </div>
     </div>
 
+    <div class="card">
+      <h2>운동 캘린더</h2>
+      <div class="cal-header">
+        <button class="btn ghost small" id="calPrev">‹</button>
+        <div class="cal-month" id="calMonthLabel"></div>
+        <button class="btn ghost small" id="calNext">›</button>
+      </div>
+      <div class="cal-legend">
+        <span><i class="dot done"></i> 운동 완료</span>
+        <span><i class="dot missed"></i> 미완료</span>
+        <span><i class="dot rest"></i> 휴식일</span>
+      </div>
+      <div class="cal-weekdays">
+        <span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span><span>일</span>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div id="calDetail" class="cal-detail hidden"></div>
+    </div>
+
     <div style="text-align:center; display:flex; flex-direction:column; align-items:center; gap:10px;">
       <div style="font-size:11.5px; color:#525a6b;">🛠 테스트 모드 · 현재 시뮬레이션 날짜: <b id="simDateLabel" style="color:var(--ink-dim);"></b></div>
       <button class="btn ghost small" id="nextDayBtn">하루 넘기기 ▶</button>
@@ -271,6 +329,15 @@
     logs:{},            // {exerciseName: [{date,weight,reps}]}
     bestStreak:0
   };
+  // ---------- migration safety net: fill in any fields missing from older saved versions ----------
+  if(!state.history) state.history = {};
+  if(!state.logs) state.logs = {};
+  if(typeof state.bestStreak !== 'number') state.bestStreak = 0;
+  if(state.name && !state.schedule){
+    // profile exists but predates the split/schedule feature — needs to redo step 2, not crash
+    state.schedule = null;
+  }
+  save('fitcoach_state', state);
 
   // ---------- split library: recommended split per weekly frequency ----------
   var SPLIT_LIBRARY = {
@@ -510,6 +577,8 @@
     renderToday();
     renderStats();
     updateSimDateLabel();
+    calCursor = new Date(getNow().getFullYear(), getNow().getMonth(), 1);
+    renderCalendar();
   });
 
   function updateSimDateLabel(){
@@ -524,7 +593,21 @@
       save('fitcoach_state', state);
       testOffsetDays = 0;
       save('fitcoach_test_offset', 0);
-      location.reload();
+      calCursor = null;
+      calSelectedKey = null;
+
+      // reset in place instead of relying on reload + localStorage (file:// storage can be unreliable)
+      document.getElementById('inName').value = '';
+      Array.prototype.forEach.call(document.getElementById('goalChoices').children, function(c){ c.classList.remove('active'); });
+      document.getElementById('goalChoices').dataset.value = '';
+      Array.prototype.forEach.call(document.getElementById('freqChoices').children, function(c){ c.classList.remove('active'); });
+      document.getElementById('freqChoices').dataset.value = '';
+      document.getElementById('nextBtn').disabled = true;
+
+      document.getElementById('dash').classList.add('hidden');
+      document.getElementById('ob2').classList.add('hidden');
+      document.getElementById('ob1').classList.remove('hidden');
+      window.scrollTo(0,0);
     }
   });
 
@@ -711,6 +794,7 @@
         save('fitcoach_state', state);
         renderToday();
         renderStats();
+        if(typeof renderCalendar === 'function' && calCursor) renderCalendar();
       });
     });
 
@@ -786,6 +870,120 @@
     document.getElementById('statBestStreak').textContent = state.bestStreak;
   }
 
+  // ================= CALENDAR =================
+  var calCursor = null; // first-of-month Date for the month currently shown
+  var calSelectedKey = null;
+
+  function dateKey(d){ return d.toISOString().slice(0,10); }
+
+  function renderCalendar(){
+    if(!calCursor) calCursor = new Date(getNow().getFullYear(), getNow().getMonth(), 1);
+    var year = calCursor.getFullYear(), month = calCursor.getMonth();
+    document.getElementById('calMonthLabel').textContent = year + '년 ' + (month+1) + '월';
+
+    var grid = document.getElementById('calGrid');
+    grid.innerHTML = '';
+
+    var firstOfMonth = new Date(year, month, 1);
+    var leadingBlanks = monIndexFromDate(firstOfMonth); // 0=Mon
+    var daysInMonth = new Date(year, month+1, 0).getDate();
+    var todayStr = getTodayKey();
+
+    for(var i=0;i<leadingBlanks;i++){
+      var blank = document.createElement('div');
+      blank.className = 'cal-cell empty';
+      grid.appendChild(blank);
+    }
+
+    for(var day=1; day<=daysInMonth; day++){
+      var d = new Date(year, month, day);
+      var key = dateKey(d);
+      var monIdx = monIndexFromDate(d);
+      var hasSplit = !!(state.schedule && state.schedule[monIdx]);
+      var rec = state.history[key];
+      var isFuture = key > todayStr;
+      var isToday = key === todayStr;
+
+      var cls = 'cal-cell';
+      if(isFuture) cls += ' future';
+      if(isToday) cls += ' today';
+
+      if(!hasSplit){
+        cls += ' rest';
+      } else if(rec && rec.sets && Object.keys(rec.sets).length){
+        var keys = Object.keys(rec.sets);
+        var doneCount = keys.filter(function(k){return rec.sets[k].done;}).length;
+        cls += (doneCount === keys.length && doneCount>0) ? ' done' : (isFuture ? '' : ' missed');
+      } else if(!isFuture){
+        cls += ' missed';
+      }
+      if(key === calSelectedKey) cls += ' selected';
+
+      var cell = document.createElement('div');
+      cell.className = cls;
+      cell.textContent = day;
+      cell.dataset.key = key;
+      cell.addEventListener('click', function(){
+        calSelectedKey = this.dataset.key;
+        renderCalendar();
+        renderCalDetail(this.dataset.key);
+      });
+      grid.appendChild(cell);
+    }
+  }
+
+  function renderCalDetail(key){
+    var panel = document.getElementById('calDetail');
+    panel.classList.remove('hidden');
+    var rec = state.history[key];
+    var monIdx = monIndexFromDate(new Date(key + 'T00:00:00'));
+    var splitName = state.schedule ? state.schedule[monIdx] : null;
+    var hasSplit = !!splitName;
+    var dateLabel = key.replace(/-/g,'.');
+    var isFuture = key > getTodayKey();
+
+    if(!hasSplit){
+      panel.innerHTML = '<h3>'+dateLabel+'</h3><div class="empty-note">'+(isFuture ? '이 날은 분할 루틴상 휴식일이 될 예정이에요.' : '이 날은 분할 루틴상 휴식일이었어요.')+'</div>';
+      return;
+    }
+
+    if(isFuture){
+      var preview = buildRoutine(splitName, 'normal');
+      var html = '<h3>'+dateLabel+' · 예정된 루틴</h3>';
+      html += '<div class="meta">'+splitName+' (컨디션에 따라 당일 세트 수가 조정돼요)</div>';
+      preview.forEach(function(item){
+        html += '<div class="ex-row"><span class="nm">'+item[0]+'</span><span class="vv">'+(item[1]>0?item[1]+'kg x ':'')+item[2]+'회 x '+item[3]+'세트</span></div>';
+      });
+      panel.innerHTML = html;
+      return;
+    }
+
+    if(!rec || !rec.sets || !Object.keys(rec.sets).length){
+      panel.innerHTML = '<h3>'+dateLabel+'</h3><div class="empty-note">운동 예정일이었지만 기록이 없어요.</div>';
+      return;
+    }
+
+    var html = '<h3>'+dateLabel+'</h3>';
+    html += '<div class="meta">'+(rec.split||'')+' · 컨디션: '+(COND_LABEL[rec.condition]||'-')+'</div>';
+    Object.keys(rec.sets).forEach(function(k){
+      var s = rec.sets[k];
+      var name = k.split('_').slice(1).join('_');
+      var status = s.done ? '✅' : '⬜';
+      var valTxt = s.done ? (s.weight ? (s.weight+'kg x '+s.reps+'회') : (s.reps+'회')) : '미완료';
+      html += '<div class="ex-row"><span class="nm">'+status+' '+name+'</span><span class="vv">'+valTxt+'</span></div>';
+    });
+    panel.innerHTML = html;
+  }
+
+  document.getElementById('calPrev').addEventListener('click', function(){
+    calCursor.setMonth(calCursor.getMonth()-1);
+    renderCalendar();
+  });
+  document.getElementById('calNext').addEventListener('click', function(){
+    calCursor.setMonth(calCursor.getMonth()+1);
+    renderCalendar();
+  });
+
   function renderDash(){
     document.getElementById('dash').classList.remove('hidden');
     document.getElementById('userName').textContent = state.name;
@@ -793,14 +991,28 @@
     renderToday();
     renderStats();
     updateSimDateLabel();
+    calCursor = new Date(getNow().getFullYear(), getNow().getMonth(), 1);
+    renderCalendar();
   }
 
   // init
   if(state.name && state.schedule){
     document.getElementById('ob1').classList.add('hidden');
     renderDash();
+  } else if(state.name && state.goal && state.freq){
+    // profile exists from an older version but has no split/schedule yet — resume at step 2
+    document.getElementById('ob1').classList.add('hidden');
+    document.getElementById('ob2').classList.remove('hidden');
+    renderStep2();
   }
 })();
+</script>
+<script>
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('./sw.js').catch(function(){ /* offline support optional, ignore failures */ });
+    });
+  }
 </script>
 </body>
 </html>
