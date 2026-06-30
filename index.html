@@ -88,6 +88,9 @@
   .ex-log .unit{font-size:12px; color:var(--ink-dim);}
   .target-note{ margin-top:8px; margin-left:37px; font-size:12px; color:var(--teal); background:rgba(51,214,182,.08); border:1px solid rgba(51,214,182,.25); padding:7px 10px; border-radius:8px; display:inline-block; }
   .target-note.new{color:var(--gold); background:rgba(255,201,74,.08); border-color:rgba(255,201,74,.25);}
+  .ex-tip{ margin-top:7px; margin-left:37px; font-size:12px; color:var(--ink-dim); line-height:1.5; }
+  .rest-row{ margin-top:9px; margin-left:37px; display:flex; align-items:center; gap:10px; }
+  .restDisplay{ font-size:13px; color:var(--gold); font-weight:700; min-width:50px; }
 
   .progress-bar{ width:100%; height:8px; border-radius:999px; background:var(--bg-soft); overflow:hidden; margin-top:6px; }
   .progress-fill{height:100%; background:linear-gradient(90deg,var(--signal),var(--gold)); border-radius:999px; transition:width .4s ease;}
@@ -229,7 +232,9 @@
       </div>
     </div>
 
-    <div style="text-align:center;">
+    <div style="text-align:center; display:flex; flex-direction:column; align-items:center; gap:10px;">
+      <div style="font-size:11.5px; color:#525a6b;">🛠 테스트 모드 · 현재 시뮬레이션 날짜: <b id="simDateLabel" style="color:var(--ink-dim);"></b></div>
+      <button class="btn ghost small" id="nextDayBtn">하루 넘기기 ▶</button>
       <span class="reset-link" id="resetLink">프로필 초기화하고 다시 시작</span>
     </div>
   </div>
@@ -250,9 +255,13 @@
     catch(e){ return memStore[k] !== undefined ? memStore[k] : null; }
   }
 
-  var todayKey = new Date().toISOString().slice(0,10);
   var WEEK_ORDER = ['월','화','수','목','금','토','일']; // index 0=Mon ... 6=Sun
   function monIndexFromDate(d){ return (d.getDay()+6)%7; } // JS getDay: 0=Sun
+
+  // ---------- test mode: simulate date offset ----------
+  var testOffsetDays = load('fitcoach_test_offset') || 0;
+  function getNow(){ var d = new Date(); d.setDate(d.getDate() + testOffsetDays); return d; }
+  function getTodayKey(){ return getNow().toISOString().slice(0,10); }
 
   var state = load('fitcoach_state') || {
     name:null, goal:null, freq:null,
@@ -275,35 +284,120 @@
   };
 
   // ---------- exercise database per body-part keyword ----------
-  // [name, defaultWeight(kg, 0=맨몸), defaultReps, defaultSets, category]
+  // [name, defaultWeight(kg, 0=맨몸), defaultReps, defaultSets, category, tip]
   var PART_DB = {
-    "가슴":   [["벤치프레스",30,10,4,"가슴"], ["인클라인 덤벨프레스",14,10,3,"가슴"], ["푸시업",0,15,3,"가슴"]],
-    "삼두":   [["케이블 푸시다운",18,12,3,"삼두"], ["딥스",0,10,3,"삼두"]],
-    "등":     [["랫풀다운",32,10,4,"등"], ["바벨로우",28,10,3,"등"], ["데드리프트",40,8,3,"등"]],
-    "이두":   [["덤벨컬",10,12,3,"이두"], ["바벨컬",15,10,3,"이두"]],
-    "하체":   [["스쿼트",40,10,4,"하체"], ["레그프레스",60,12,3,"하체"], ["런지",10,12,3,"하체"]],
-    "어깨":   [["숄더프레스",10,10,3,"어깨"], ["사이드 레터럴레이즈",6,15,3,"어깨"]],
-    "복근":   [["크런치",0,20,3,"복근"], ["행잉 레그레이즈",0,12,3,"복근"], ["플랭크",0,1,3,"복근"]],
-    "팔":     [["덤벨컬",10,12,3,"팔"], ["케이블 푸시다운",18,12,3,"팔"]],
-    "상체":   [["벤치프레스",30,10,3,"상체"], ["랫풀다운",32,10,3,"상체"], ["숄더프레스",10,10,3,"상체"]],
-    "전신":   [["스쿼트",30,10,3,"전신"], ["푸시업",0,15,3,"전신"], ["버피",0,10,3,"전신"], ["플랭크",0,1,3,"전신"]],
-    "유산소": [["조깅",0,1,1,"유산소"], ["줄넘기",0,2,3,"유산소"]],
-    "회복":   [["전신 스트레칭",0,1,1,"회복"]]
+    "가슴": [
+      ["벤치프레스",30,10,4,"가슴","견갑골을 모으고 가슴을 펴서, 봉이 가슴 중앙에 닿도록 컨트롤하며 내리세요."],
+      ["인클라인 덤벨프레스",14,10,4,"가슴","상체를 30~45도로 세우면 가슴 윗부분에 자극이 집중됩니다."],
+      ["디클라인 벤치프레스",26,10,3,"가슴","가슴 아랫부분 자극용, 팔꿈치를 너무 벌리지 마세요."],
+      ["체스트프레스 머신",35,12,3,"가슴","등을 패드에 완전히 밀착하고 가슴으로 미는 느낌에 집중하세요."],
+      ["펙덱 플라이",15,12,3,"가슴","팔꿈치를 살짝 굽힌 채 유지하며 가슴 안쪽을 쥐어짠다는 느낌으로."],
+      ["케이블 크로스오버",10,12,3,"가슴","팔이 아닌 가슴 근육으로 모은다는 느낌으로 천천히 컨트롤하세요."],
+      ["푸시업",0,15,3,"가슴","몸을 일직선으로 유지하고 가슴이 바닥에 닿기 직전까지 내려가세요."]
+    ],
+    "삼두": [
+      ["케이블 푸시다운",18,12,3,"삼두","팔꿈치를 몸통에 고정하고 손목이 꺾이지 않게 미세요."],
+      ["딥스",0,10,3,"삼두","상체를 살짝 세우면 삼두에 더 집중됩니다."],
+      ["오버헤드 익스텐션",10,12,3,"삼두","팔꿈치가 벌어지지 않도록 고정한 채 천천히 폈다 접으세요."],
+      ["클로즈그립 벤치프레스",24,10,3,"삼두","그립을 어깨너비보다 좁게 잡고 팔꿈치를 몸에 붙여 내리세요."],
+      ["킥백",6,12,3,"삼두","상체를 숙이고 팔꿈치 고정 후 끝까지 펴서 짜듯이 수축하세요."],
+      ["라잉 트라이셉스 익스텐션",14,12,3,"삼두","바벨이 이마 쪽으로 내려올 때 팔꿈치 각도를 유지하세요."]
+    ],
+    "등": [
+      ["랫풀다운",32,10,4,"등","가슴을 펴고 봉을 쇄골 쪽으로 당기며 광배근 수축을 느끼세요."],
+      ["암풀다운",14,12,3,"등","팔을 곧게 편 채 아래로 당겨 광배근만 단독으로 자극하세요."],
+      ["하이로우",24,10,3,"등","팔꿈치를 높게 들어 당기면 등 윗부분(승모근 하부)에 자극이 갑니다."],
+      ["미들로우",28,10,3,"등","가슴을 펴고 팔꿈치를 뒤로 당기며 견갑골을 모으세요."],
+      ["로우로우",26,10,3,"등","상체 반동 없이 팔과 등 힘만으로 손잡이를 당기세요."],
+      ["슈러그",30,12,3,"등","어깨를 귀 쪽으로 으쓱 올린 뒤 정점에서 1초 멈췄다 내리세요."],
+      ["풀업",0,8,4,"등","턱이 봉 위로 올라올 때까지 당기고, 내려올 때 천천히 컨트롤하세요."]
+    ],
+    "이두": [
+      ["덤벨컬",10,12,3,"이두","팔꿈치를 고정하고 반동 없이 천천히 들어 올리세요."],
+      ["바벨컬",15,10,3,"이두","손목을 곧게 펴고 어깨 흔들림 없이 컬 동작에 집중하세요."],
+      ["해머컬",10,12,3,"이두","손바닥이 마주보게 잡으면 전완근까지 함께 자극됩니다."],
+      ["컨센트레이션컬",8,12,3,"이두","팔꿈치를 허벅지에 고정해 이두근만 단독으로 수축하세요."],
+      ["프리처컬",12,10,3,"이두","패드에 팔을 고정해 반동을 완전히 제거하고 진행하세요."],
+      ["케이블컬",12,12,3,"이두","케이블 장력을 이용해 운동 내내 긴장을 유지하세요."]
+    ],
+    "하체": [
+      ["스쿼트",40,10,4,"하체","무릎이 발끝 방향을 향하게, 허리는 곧게 편 채 앉으세요."],
+      ["레그프레스",60,12,4,"하체","무릎이 완전히 펴지지 않게 살짝 굽힌 상태로 마무리하세요."],
+      ["런지",10,12,3,"하체","앞 무릎이 발끝을 넘지 않도록 보폭을 충분히 벌리세요."],
+      ["레그익스텐션",20,12,3,"하체","올렸을 때 1초 정지해 대퇴사두근을 확실히 수축하세요."],
+      ["레그컬",16,12,3,"하체","골반이 들리지 않게 고정하고 햄스트링으로만 당기세요."],
+      ["힙쓰러스트",30,10,3,"하체","정점에서 엉덩이를 짜듯 조이며 1초 버티세요."],
+      ["카프레이즈",20,15,3,"하체","발끝으로 최대한 높이 올라가 종아리를 끝까지 수축하세요."]
+    ],
+    "어깨": [
+      ["숄더프레스",10,10,3,"어깨","허리가 과하게 꺾이지 않도록 코어에 힘을 주고 미세요."],
+      ["사이드 레터럴레이즈",6,15,3,"어깨","팔꿈치를 살짝 굽힌 채 어깨 높이까지만 올리세요."],
+      ["프론트 레이즈",6,12,3,"어깨","반동 없이 천천히 들어 어깨 앞쪽에 집중하세요."],
+      ["리어델트 플라이",6,15,3,"어깨","상체를 숙이고 날개뼈를 모으며 뒤쪽 어깨를 수축하세요."],
+      ["아놀드프레스",8,10,3,"어깨","손바닥을 안에서 밖으로 회전시키며 밀어 올리세요."],
+      ["업라이트로우",14,12,3,"어깨","팔꿈치가 손목보다 높게 오도록 당겨 올리세요."]
+    ],
+    "복근": [
+      ["크런치",0,20,3,"복근","허리를 바닥에 누른 채 상부 복근만 말아 올리세요."],
+      ["행잉 레그레이즈",0,12,3,"복근","반동 없이 다리를 들어 올리며 복근 긴장을 유지하세요."],
+      ["플랭크",0,1,3,"복근","엉덩이가 처지지 않게 일직선을 유지하며 버티세요. (분 단위 시간)"],
+      ["사이드 플랭크",0,1,3,"복근","골반이 무너지지 않도록 옆구리 힘으로 버티세요. (분 단위 시간)"],
+      ["케이블 크런치",15,15,3,"복근","엉덩이는 고정하고 척추를 말아 복근으로만 당기세요."],
+      ["러시안 트위스트",4,20,3,"복근","발을 살짝 띄우고 몸통을 회전시켜 옆구리를 자극하세요."]
+    ],
+    "팔": [
+      ["덤벨컬",10,12,3,"팔","팔꿈치를 고정하고 반동 없이 들어 올리세요."],
+      ["해머컬",10,12,3,"팔","손바닥을 마주보게 잡아 전완근까지 함께 자극하세요."],
+      ["케이블 푸시다운",18,12,3,"팔","팔꿈치를 몸통에 고정하고 끝까지 펴며 짜듯이 수축하세요."],
+      ["딥스",0,10,3,"팔","상체를 세우면 삼두에 더 집중됩니다."],
+      ["바벨컬",15,10,3,"팔","어깨 흔들림 없이 컬 동작에만 집중하세요."],
+      ["오버헤드 익스텐션",10,12,3,"팔","팔꿈치 고정 후 천천히 폈다 접으세요."]
+    ],
+    "상체": [
+      ["벤치프레스",30,10,3,"상체","가슴 중앙에 봉이 닿도록 컨트롤하며 내리세요."],
+      ["랫풀다운",32,10,3,"상체","쇄골 쪽으로 당기며 광배근 수축을 느끼세요."],
+      ["숄더프레스",10,10,3,"상체","코어에 힘을 주고 허리 과신전 없이 미세요."],
+      ["시티드로우",28,10,3,"상체","가슴을 펴고 견갑골을 모으며 당기세요."],
+      ["케이블 푸시다운",18,12,3,"상체","팔꿈치 고정 후 끝까지 펴며 수축하세요."],
+      ["덤벨컬",10,12,3,"상체","반동 없이 천천히 컬 동작을 진행하세요."]
+    ],
+    "전신": [
+      ["스쿼트",30,10,3,"전신","무릎이 발끝 방향을 향하게 앉으세요."],
+      ["푸시업",0,15,3,"전신","몸을 일직선으로 유지하며 내려가세요."],
+      ["버피",0,10,3,"전신","점프 후 착지 시 무릎 충격을 흡수하세요."],
+      ["플랭크",0,1,3,"전신","엉덩이가 처지지 않게 일직선을 유지하세요. (분 단위 시간)"],
+      ["덤벨로우",12,12,3,"전신","허리를 곧게 편 채 팔꿈치를 뒤로 당기세요."],
+      ["마운틴클라이머",0,30,3,"전신","코어를 단단히 고정한 채 무릎을 빠르게 당기세요."]
+    ],
+    "유산소": [
+      ["조깅",0,20,1,"유산소","일정한 페이스로 호흡이 가빠지되 대화 가능한 강도를 유지하세요. (분 단위)"],
+      ["줄넘기",0,10,3,"유산소","무릎을 살짝 굽혀 충격을 흡수하며 일정한 리듬을 유지하세요. (분 단위)"],
+      ["사이클",0,20,1,"유산소","케이던스를 일정하게 유지하며 무릎에 무리가 가지 않게 하세요. (분 단위)"],
+      ["로잉머신",0,15,1,"유산소","다리-허리-팔 순서로 당기고 역순으로 돌아오세요. (분 단위)"],
+      ["계단오르기",0,15,1,"유산소","발 전체로 디디며 무릎 통증 시 즉시 강도를 낮추세요. (분 단위)"]
+    ],
+    "회복": [
+      ["전신 스트레칭",0,10,1,"회복","반동 없이 천천히 늘리고 각 자세를 20~30초 유지하세요. (분 단위)"],
+      ["폼롤러 마사지",0,10,1,"회복","뭉친 부위를 천천히 굴리며 풀어주세요. (분 단위)"],
+      ["요가/호흡 이완",0,10,1,"회복","깊게 호흡하며 긴장된 근육을 천천히 이완하세요. (분 단위)"]
+    ]
   };
 
   function partsOf(splitName){ return splitName.split("/"); }
 
   function buildRoutine(splitName, condition){
     var parts = partsOf(splitName);
+    // single-part day -> full variety (up to 7); combined-part day -> trim per part to keep volume reasonable
+    var perPartCap = parts.length === 1 ? 7 : 4;
     var list = [];
     parts.forEach(function(p){
       var items = PART_DB[p] || [];
-      items.forEach(function(it){ list.push(it.slice()); });
+      items.slice(0, perPartCap).forEach(function(it){ list.push(it.slice()); });
     });
     // condition adjusts set count
     var setAdj = condition === 'bad' ? -1 : (condition === 'good' ? 1 : 0);
     list.forEach(function(it){ it[3] = Math.max(1, it[3] + setAdj); });
-    return list; // [name, defaultWeight, defaultReps, sets, category]
+    return list; // [name, defaultWeight, defaultReps, sets, category, tip]
   }
 
   var GOAL_LABEL = {diet:"체중 감량", muscle:"근육량 증가", stamina:"체력·지구력 향상"};
@@ -410,10 +504,26 @@
     renderDash();
   });
 
+  document.getElementById('nextDayBtn').addEventListener('click', function(){
+    testOffsetDays += 1;
+    save('fitcoach_test_offset', testOffsetDays);
+    renderToday();
+    renderStats();
+    updateSimDateLabel();
+  });
+
+  function updateSimDateLabel(){
+    var d = getNow();
+    var lbl = (d.getMonth()+1) + '월 ' + d.getDate() + '일 (' + WEEK_ORDER[monIndexFromDate(d)] + ') · +' + testOffsetDays + '일';
+    document.getElementById('simDateLabel').textContent = lbl;
+  }
+
   document.getElementById('resetLink').addEventListener('click', function(){
     if(confirm('모든 기록이 초기화됩니다. 계속할까요?')){
       state = {name:null, goal:null, freq:null, schedule:null, splitOrder:null, history:{}, logs:{}, bestStreak:0};
       save('fitcoach_state', state);
+      testOffsetDays = 0;
+      save('fitcoach_test_offset', 0);
       location.reload();
     }
   });
@@ -426,12 +536,12 @@
     chip.classList.add('active');
     var cond = chip.dataset.val;
 
-    var todayMonIdx = monIndexFromDate(new Date());
+    var todayMonIdx = monIndexFromDate(getNow());
     var splitName = state.schedule[todayMonIdx];
-    var rec = state.history[todayKey] || {condition:null, split:splitName, sets:{}};
+    var rec = state.history[getTodayKey()] || {condition:null, split:splitName, sets:{}};
     rec.condition = cond;
     rec.split = splitName;
-    state.history[todayKey] = rec;
+    state.history[getTodayKey()] = rec;
     save('fitcoach_state', state);
     renderToday();
   }.bind(document.getElementById('conditionChoices')));
@@ -465,7 +575,7 @@
     exListEl.innerHTML = '';
     document.getElementById('routineTag').textContent = '';
 
-    var todayMonIdx = monIndexFromDate(new Date());
+    var todayMonIdx = monIndexFromDate(getNow());
     var splitName = state.schedule[todayMonIdx];
 
     if(!splitName){
@@ -475,7 +585,7 @@
     }
     restMsg.classList.add('hidden');
 
-    var rec = state.history[todayKey];
+    var rec = state.history[getTodayKey()];
     // restore condition chip
     if(rec && rec.condition){
       Array.prototype.forEach.call(document.getElementById('conditionChoices').children, function(c){
@@ -498,13 +608,14 @@
     var totalDoneSets = 0, totalSets = 0;
 
     routine.forEach(function(item, idx){
-      var name = item[0], defW = item[1], defR = item[2], sets = item[3], cat = item[4];
+      var name = item[0], defW = item[1], defR = item[2], sets = item[3], cat = item[4], tip = item[5] || '';
       var target = suggestTarget(item);
       var key = idx + '_' + name;
       if(!rec.sets[key]) rec.sets[key] = {weight:null, reps:null, done:false};
       var setRec = rec.sets[key];
       totalSets++;
       if(setRec.done) totalDoneSets++;
+      var restSeconds = (cat === '유산소' || cat === '회복') ? 0 : (defW >= 25 ? 90 : 60);
 
       var row = document.createElement('div');
       row.className = 'ex-item';
@@ -522,6 +633,7 @@
           '</div>'+
           '<div class="ex-cat">'+cat+'</div>'+
         '</div>'+
+        (tip ? '<div class="ex-tip">💡 '+tip+'</div>' : '')+
         '<div class="target-note '+(target.isNew?'new':'')+'">'+ (target.isNew?'🆕 ':'📈 ') + targetTxt +'</div>'+
         (defW>0 ?
           '<div class="ex-log">'+
@@ -532,15 +644,51 @@
           '<div class="ex-log">'+
             '<input type="number" step="1" placeholder="'+target.reps+'" class="logReps" data-key="'+key+'" value="'+(setRec.reps!==null?setRec.reps:'')+'"><span class="unit">회/분</span>'+
           '</div>'
+        )+
+        (restSeconds > 0 ?
+          '<div class="rest-row">'+
+            '<button class="btn ghost small restBtn" data-key="'+key+'" data-seconds="'+restSeconds+'">⏱ 휴식 '+restSeconds+'초</button>'+
+            '<span class="restDisplay" data-key="'+key+'"></span>'+
+          '</div>'
+          : ''
         );
       exListEl.appendChild(row);
     });
 
-    // checkbox events
+    // rest timer events
+    exListEl.querySelectorAll('.restBtn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var key = btn.dataset.key;
+        var disp = exListEl.querySelector('.restDisplay[data-key="'+key+'"]');
+        if(btn._timer){
+          clearInterval(btn._timer);
+          btn._timer = null;
+          btn.textContent = '⏱ 휴식 ' + btn.dataset.seconds + '초';
+          disp.textContent = '';
+          return;
+        }
+        var seconds = parseInt(btn.dataset.seconds,10);
+        btn.textContent = '■ 중지';
+        disp.textContent = seconds + '초';
+        btn._timer = setInterval(function(){
+          seconds--;
+          if(seconds <= 0){
+            clearInterval(btn._timer);
+            btn._timer = null;
+            disp.textContent = '휴식 종료! 💪';
+            btn.textContent = '⏱ 휴식 ' + btn.dataset.seconds + '초';
+            return;
+          }
+          disp.textContent = seconds + '초';
+        }, 1000);
+      });
+    });
+
+
     exListEl.querySelectorAll('.ex-check').forEach(function(box){
       box.addEventListener('click', function(){
         var key = box.dataset.key;
-        var rec2 = state.history[todayKey];
+        var rec2 = state.history[getTodayKey()];
         var setRec = rec2.sets[key];
         setRec.done = !setRec.done;
 
@@ -556,7 +704,7 @@
               setRec.weight = wInput ? (isNaN(w)?0:w) : 0;
               setRec.reps = r;
               if(!state.logs[exName]) state.logs[exName] = [];
-              state.logs[exName].push({date:todayKey, weight:setRec.weight, reps:setRec.reps});
+              state.logs[exName].push({date:getTodayKey(), weight:setRec.weight, reps:setRec.reps});
             }
           }
         }
@@ -574,7 +722,7 @@
   // ================= STATS =================
   function computeStreak(){
     var streak = 0;
-    var d = new Date();
+    var d = getNow();
     while(true){
       var monIdx = monIndexFromDate(d);
       var splitName = state.schedule[monIdx];
@@ -603,7 +751,7 @@
     var weekCompletedDays = 0, weekTrackedDays = 0, totalDoneSets = 0;
 
     for(var i=6;i>=0;i--){
-      var d = new Date();
+      var d = getNow();
       d.setDate(d.getDate()-i);
       var key = d.toISOString().slice(0,10);
       var monIdx = monIndexFromDate(d);
@@ -620,7 +768,7 @@
       }
       var col = document.createElement('div');
       col.className = 'day-col';
-      var isToday = key === todayKey;
+      var isToday = key === getTodayKey();
       col.innerHTML =
         '<div class="day-bar'+(isToday?' today':'')+'" style="height:70px;"><div class="fill" style="height:'+pct+'%"></div></div>'+
         '<div class="day-lbl">'+dayLabels[d.getDay()]+'</div>';
@@ -644,6 +792,7 @@
     document.getElementById('goalLine').textContent = '목표: ' + GOAL_LABEL[state.goal] + ' · 주 ' + state.freq + '회';
     renderToday();
     renderStats();
+    updateSimDateLabel();
   }
 
   // init
