@@ -577,8 +577,7 @@
     renderToday();
     renderStats();
     updateSimDateLabel();
-    calCursor = new Date(getNow().getFullYear(), getNow().getMonth(), 1);
-    renderCalendar();
+    renderCalendar(); // keep current calendar month in view; user can navigate with ‹ › manually
   });
 
   function updateSimDateLabel(){
